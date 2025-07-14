@@ -31,7 +31,6 @@ const chunksStore = localforage.createInstance({
 interface RecordingSettings {
   quality: string;
   fps: string;
-  recordingType: string;
   micActive: boolean;
 }
 
@@ -46,7 +45,6 @@ const Recorder = () => {
   const [settings, setSettings] = useState<RecordingSettings>({
     quality: "1080p",
     fps: "60",
-    recordingType: "screen",
     micActive: true,
   });
   const [useAdaptiveFilter, setUseAdaptiveFilter] = useState(true);
@@ -59,7 +57,6 @@ const Recorder = () => {
   const audioDestination = useRef<MediaStreamAudioDestinationNode | null>(null);
   const audioInputGain = useRef<GainNode | null>(null);
   const audioOutputGain = useRef<GainNode | null>(null);
-  const chunkIndex = useRef(0);
   const hasChunks = useRef(false);
   const isFinishing = useRef(false);
   const lastTimecode = useRef<number>(0); // Track last timecode for chunk deduplication
@@ -73,14 +70,12 @@ const Recorder = () => {
   useEffect(() => {
     const savedQuality = localStorage.getItem("qualityValue");
     const savedFps = localStorage.getItem("fpsValue");
-    const savedRecordingType = localStorage.getItem("recordingType");
     const savedMicActive = localStorage.getItem("micActive");
 
     setSettings((prev) => ({
       ...prev,
       quality: savedQuality || prev.quality,
       fps: savedFps || prev.fps,
-      recordingType: savedRecordingType || prev.recordingType,
       micActive:
         savedMicActive !== null ? JSON.parse(savedMicActive) : prev.micActive,
     }));
@@ -161,8 +156,6 @@ const Recorder = () => {
         if (newSettings.quality)
           localStorage.setItem("qualityValue", newSettings.quality);
         if (newSettings.fps) localStorage.setItem("fpsValue", newSettings.fps);
-        if (newSettings.recordingType)
-          localStorage.setItem("recordingType", newSettings.recordingType);
         if (newSettings.micActive !== undefined)
           localStorage.setItem(
             "micActive",
@@ -296,7 +289,6 @@ const Recorder = () => {
     // Clear previous chunks
     chunksStore.clear();
     hasChunks.current = false;
-    chunkIndex.current = 0;
     index.current = 0;
     lastTimecode.current = 0;
     sentLast.current = false;
@@ -360,7 +352,6 @@ const Recorder = () => {
             };
             await chunksStore.setItem(`chunk_${index.current}`, chunkData);
             index.current++;
-            chunkIndex.current = index.current;
             hasChunks.current = true;
           } catch {
             alert("Error saving chunk. Stopping recording.");
