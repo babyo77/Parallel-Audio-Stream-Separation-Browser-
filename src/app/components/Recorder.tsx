@@ -48,9 +48,7 @@ const Recorder = () => {
   const [started, setStarted] = useState(false);
   const [recording, setRecording] = useState(false);
   const [downloading, setDownloading] = useState(false);
-  const [recordingStartTime, setRecordingStartTime] = useState<number | null>(
-    null
-  );
+
   const [performanceStats, setPerformanceStats] =
     useState<PerformanceStats | null>(null);
   const [settings, setSettings] = useState<RecordingSettings>({
@@ -334,7 +332,7 @@ const Recorder = () => {
 
       recorder.current.start(chunkInterval);
       setRecording(true);
-      setRecordingStartTime(Date.now());
+
       localStorage.setItem("recording", "true");
 
       // Handle data available
@@ -714,12 +712,6 @@ const Recorder = () => {
               <h2 className="text-2xl font-bold text-foreground mb-2">
                 Recording in Progress
               </h2>
-
-              <div className="text-3xl font-mono text-destructive">
-                {recordingStartTime &&
-                  Math.floor((Date.now() - recordingStartTime) / 1000)}
-                s
-              </div>
             </div>
 
             {performanceStats && (
