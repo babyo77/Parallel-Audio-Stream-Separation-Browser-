@@ -28,12 +28,6 @@ const chunksStore = localforage.createInstance({
   name: "chunks",
 });
 
-interface PerformanceStats {
-  fps: number;
-  chunkSize: number;
-  processingTime: number;
-}
-
 interface RecordingSettings {
   quality: string;
   fps: string;
@@ -49,8 +43,6 @@ const Recorder = () => {
   const [recording, setRecording] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
-  const [performanceStats, setPerformanceStats] =
-    useState<PerformanceStats | null>(null);
   const [settings, setSettings] = useState<RecordingSettings>({
     quality: "1080p",
     fps: "60",
@@ -370,15 +362,6 @@ const Recorder = () => {
             index.current++;
             chunkIndex.current = index.current;
             hasChunks.current = true;
-
-            const processingTime = performance.now(); // Optionally update stats here
-            if (processingTime < 1000) {
-              setPerformanceStats({
-                fps: parseInt(settings.fps),
-                chunkSize: e.data.size,
-                processingTime,
-              });
-            }
           } catch {
             alert("Error saving chunk. Stopping recording.");
             setRecording(false);
@@ -713,29 +696,6 @@ const Recorder = () => {
                 Recording in Progress
               </h2>
             </div>
-
-            {performanceStats && (
-              <div className="grid grid-cols-3 gap-4 text-sm">
-                <div className="bg-muted rounded-lg p-3 border">
-                  <div className="font-medium text-foreground">
-                    {settings.quality}
-                  </div>
-                  <div className="text-muted-foreground">Quality</div>
-                </div>
-                <div className="bg-muted rounded-lg p-3 border">
-                  <div className="font-medium text-foreground">
-                    {performanceStats.fps} FPS
-                  </div>
-                  <div className="text-muted-foreground">Frame Rate</div>
-                </div>
-                <div className="bg-muted rounded-lg p-3 border">
-                  <div className="font-medium text-foreground">
-                    {(performanceStats.chunkSize / 1024 / 1024).toFixed(1)}MB
-                  </div>
-                  <div className="text-muted-foreground">Chunk Size</div>
-                </div>
-              </div>
-            )}
 
             <Button
               onClick={handleStopRecording}
