@@ -193,17 +193,21 @@ const Recorder = () => {
       if (base64) {
         webmBlob = base64ToBlob(base64);
       } else {
-        // Combine chunks from IndexedDB
-        const chunkArray: Blob[] = [];
-        await chunksStore.iterate((value: { chunk: Blob }) => {
-          chunkArray.push(value.chunk);
+        const chunkArray: { index: number; chunk: Blob }[] = [];
+        await chunksStore.iterate((value: { chunk: Blob; index: number }) => {
+          chunkArray.push({ index: value.index, chunk: value.chunk });
         });
         if (chunkArray.length === 0) {
           alert("No recording chunks found. Please try recording again.");
           setDownloading(false);
           return;
         }
-        webmBlob = new Blob(chunkArray, { type: "video/webm" });
+
+        chunkArray.sort((a, b) => a.index - b.index);
+        webmBlob = new Blob(
+          chunkArray.map((c) => c.chunk),
+          { type: "video/webm" }
+        );
       }
 
       // Use a ref to store and reuse the ffmpeg instance
@@ -258,6 +262,35 @@ const Recorder = () => {
   };
 
   // Recording functions
+  const stopRecording = useCallback(async () => {
+    isFinishing.current = true;
+
+    if (recorder.current) {
+      recorder.current.stop();
+      recorder.current = null;
+    }
+
+    // Stop all streams
+    [liveStream, helperVideoStream].forEach((streamRef) => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
+    });
+
+    // Clean up audio context
+    if (audioContext.current) {
+      await audioContext.current.close();
+      audioContext.current = null;
+      audioDestination.current = null;
+      audioInputGain.current = null;
+      audioOutputGain.current = null;
+    }
+
+    setRecording(false);
+    localStorage.setItem("recording", "false");
+  }, []);
+
   const startRecording = useCallback(async () => {
     if (recorder.current || !liveStream.current) {
       return;
@@ -304,39 +337,41 @@ const Recorder = () => {
 
       // Handle data available
       recorder.current.ondataavailable = async (e: BlobEvent) => {
+        // Optional: Check available storage before saving
+        try {
+          const { quota, usage } = await navigator.storage.estimate();
+          const minMemory = 26214400; // 25MB
+          if (quota && quota - (usage || 0) < minMemory) {
+            alert("Low storage space. Stopping recording.");
+            stopRecording();
+            return;
+          }
+        } catch {}
+
         if (e.data.size > 0) {
-          // If timecode is available, check for duplicates
           const timestamp =
             (e as BlobEvent & { timecode?: number }).timecode ?? Date.now();
           if (hasChunks.current === false) {
             hasChunks.current = true;
             lastTimecode.current = timestamp;
           } else if (timestamp < lastTimecode.current) {
-            // Duplicate chunk, ignore
             return;
           } else {
             lastTimecode.current = timestamp;
           }
 
           try {
-            const startTime = performance.now();
             const chunkData = {
               index: index.current,
               chunk: e.data,
               timestamp,
             };
-            chunksStore
-              .setItem(`chunk_${index.current}`, chunkData)
-              .catch(() => {
-                setRecording(false);
-                localStorage.setItem("recording", "false");
-              });
-
+            await chunksStore.setItem(`chunk_${index.current}`, chunkData);
             index.current++;
             chunkIndex.current = index.current;
             hasChunks.current = true;
 
-            const processingTime = performance.now() - startTime;
+            const processingTime = performance.now(); // Optionally update stats here
             if (processingTime < 1000) {
               setPerformanceStats({
                 fps: parseInt(settings.fps),
@@ -344,13 +379,13 @@ const Recorder = () => {
                 processingTime,
               });
             }
-          } catch (err) {
-            console.error("Error saving chunk:", err);
+          } catch {
+            alert("Error saving chunk. Stopping recording.");
             setRecording(false);
             localStorage.setItem("recording", "false");
+            stopRecording();
           }
         } else {
-          // Check Media Recorder state
           if (recorder.current && recorder.current.state === "inactive") {
             setRecording(false);
             localStorage.setItem("recording", "false");
@@ -379,36 +414,7 @@ const Recorder = () => {
     } catch (err) {
       console.error("Recording error:", err);
     }
-  }, [settings]);
-
-  const stopRecording = useCallback(async () => {
-    isFinishing.current = true;
-
-    if (recorder.current) {
-      recorder.current.stop();
-      recorder.current = null;
-    }
-
-    // Stop all streams
-    [liveStream, helperVideoStream].forEach((streamRef) => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-        streamRef.current = null;
-      }
-    });
-
-    // Clean up audio context
-    if (audioContext.current) {
-      await audioContext.current.close();
-      audioContext.current = null;
-      audioDestination.current = null;
-      audioInputGain.current = null;
-      audioOutputGain.current = null;
-    }
-
-    setRecording(false);
-    localStorage.setItem("recording", "false");
-  }, []);
+  }, [settings, stopRecording]);
 
   const createMixedAudioStream = async (
     screenStream: MediaStream,
