@@ -475,7 +475,23 @@ const Recorder = () => {
         videoConstraints.height = { ideal: height, max: height };
       }
 
-      // Get screen stream
+      // New: Ask for microphone permission first if mic is enabled
+      let micStream: MediaStream | null = null;
+      if (settings.micActive) {
+        try {
+          micStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: false,
+          });
+        } catch {
+          alert(
+            "Microphone access denied. Please allow microphone access to record with audio, or disable the microphone option."
+          );
+          return;
+        }
+      }
+
+      // Get screen stream (display media)
       helperVideoStream.current = await navigator.mediaDevices.getDisplayMedia({
         audio: true,
         video: videoConstraints,
@@ -489,13 +505,8 @@ const Recorder = () => {
       }
 
       // Handle audio mixing for screen recording with microphone
-      if (settings.micActive) {
+      if (settings.micActive && micStream) {
         try {
-          const micStream = await navigator.mediaDevices.getUserMedia({
-            audio: true,
-            video: false,
-          });
-
           const mixedAudioStream = await createMixedAudioStream(
             helperVideoStream.current,
             micStream,
@@ -508,10 +519,9 @@ const Recorder = () => {
             ...videoTracks,
             ...audioTracks,
           ]);
-        } catch (micError) {
+        } catch {
           console.warn(
-            "Failed to get microphone audio, using screen audio only:",
-            micError
+            "Failed to mix microphone audio, using screen audio only:"
           );
           liveStream.current = helperVideoStream.current;
         }
