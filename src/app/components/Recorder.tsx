@@ -416,69 +416,74 @@ const Recorder = () => {
     }
   }, [settings, stopRecording]);
 
-  const createMixedAudioStream = async (
-    screenStream: MediaStream,
-    micStream: MediaStream,
-    useAdaptiveFilter: boolean
-  ) => {
-    audioContext.current = new AudioContext();
-    audioDestination.current =
-      audioContext.current.createMediaStreamDestination();
+  const createMixedAudioStream = useCallback(
+    async (
+      screenStream: MediaStream,
+      micStream: MediaStream,
+      useAdaptiveFilter: boolean
+    ) => {
+      audioContext.current = new AudioContext();
+      audioDestination.current =
+        audioContext.current.createMediaStreamDestination();
 
-    const screenAudioTracks = screenStream.getAudioTracks();
-    const micAudioTracks = micStream.getAudioTracks();
+      const screenAudioTracks = screenStream.getAudioTracks();
+      const micAudioTracks = micStream.getAudioTracks();
 
-    if (screenAudioTracks.length > 0 && micAudioTracks.length > 0) {
-      const screenSource =
-        audioContext.current.createMediaStreamSource(screenStream);
-      const micSource = audioContext.current.createMediaStreamSource(micStream);
+      if (screenAudioTracks.length > 0 && micAudioTracks.length > 0) {
+        const screenSource =
+          audioContext.current.createMediaStreamSource(screenStream);
+        const micSource =
+          audioContext.current.createMediaStreamSource(micStream);
 
-      if (useAdaptiveFilter) {
-        // Load the AudioWorkletProcessor
-        if (!audioContext.current.audioWorklet) {
-          throw new Error("AudioWorklet not supported");
-        }
-        await audioContext.current.audioWorklet.addModule(
-          "/AdaptiveFilterProcessor.js"
-        );
-        // Adaptive filter node
-        const adaptiveFilterNode = new AudioWorkletNode(
-          audioContext.current,
-          "adaptive-filter-processor",
-          {
-            numberOfInputs: 2,
-            numberOfOutputs: 1,
-            channelCount: 1,
+        if (useAdaptiveFilter) {
+          // Load the AudioWorkletProcessor
+          if (!audioContext.current.audioWorklet) {
+            throw new Error("AudioWorklet not supported");
           }
-        );
-        // Connect sources to the adaptive filter
-        micSource.connect(adaptiveFilterNode, 0, 0);
-        screenSource.connect(adaptiveFilterNode, 0, 1);
-        adaptiveFilterNode.connect(audioDestination.current);
-      } else {
-        // Mix both sources directly (no filter)
-        micSource.connect(audioDestination.current);
-        screenSource.connect(audioDestination.current);
+          await audioContext.current.audioWorklet.addModule(
+            "/AdaptiveFilterProcessor.js"
+          );
+          // Adaptive filter node
+          const adaptiveFilterNode = new AudioWorkletNode(
+            audioContext.current,
+            "adaptive-filter-processor",
+            {
+              numberOfInputs: 2,
+              numberOfOutputs: 1,
+              channelCount: 1,
+            }
+          );
+          // Connect sources to the adaptive filter
+          micSource.connect(adaptiveFilterNode, 0, 0);
+          screenSource.connect(adaptiveFilterNode, 0, 1);
+          adaptiveFilterNode.connect(audioDestination.current);
+        } else {
+          // Mix both sources directly (no filter)
+          micSource.connect(audioDestination.current);
+          screenSource.connect(audioDestination.current);
+        }
+        setAudioInputVolume(1.0);
+        setAudioOutputVolume(0.5);
+      } else if (micAudioTracks.length > 0) {
+        const micSource =
+          audioContext.current.createMediaStreamSource(micStream);
+        audioInputGain.current = audioContext.current.createGain();
+        micSource.connect(audioInputGain.current);
+        audioInputGain.current.connect(audioDestination.current);
+        setAudioInputVolume(1.0);
+      } else if (screenAudioTracks.length > 0) {
+        const screenSource =
+          audioContext.current.createMediaStreamSource(screenStream);
+        audioOutputGain.current = audioContext.current.createGain();
+        screenSource.connect(audioOutputGain.current);
+        audioOutputGain.current.connect(audioDestination.current);
+        setAudioOutputVolume(0.5);
       }
-      setAudioInputVolume(1.0);
-      setAudioOutputVolume(0.5);
-    } else if (micAudioTracks.length > 0) {
-      const micSource = audioContext.current.createMediaStreamSource(micStream);
-      audioInputGain.current = audioContext.current.createGain();
-      micSource.connect(audioInputGain.current);
-      audioInputGain.current.connect(audioDestination.current);
-      setAudioInputVolume(1.0);
-    } else if (screenAudioTracks.length > 0) {
-      const screenSource =
-        audioContext.current.createMediaStreamSource(screenStream);
-      audioOutputGain.current = audioContext.current.createGain();
-      screenSource.connect(audioOutputGain.current);
-      audioOutputGain.current.connect(audioDestination.current);
-      setAudioOutputVolume(0.5);
-    }
 
-    return audioDestination.current.stream;
-  };
+      return audioDestination.current.stream;
+    },
+    []
+  );
 
   const startStream = useCallback(async () => {
     const { width, height } = getResolutionSettings(settings.quality);
@@ -545,7 +550,7 @@ const Recorder = () => {
     } catch (err) {
       console.error("Stream creation error:", err);
     }
-  }, [settings, startRecording, useAdaptiveFilter]);
+  }, [settings, startRecording, useAdaptiveFilter, createMixedAudioStream]);
 
   // Event handlers
   const handleStartRecording = () => {
