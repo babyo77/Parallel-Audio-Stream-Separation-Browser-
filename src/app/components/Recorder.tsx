@@ -16,11 +16,13 @@ import reencodeVideo from "./reencodeVideo";
 import { toBlobURL } from "@ffmpeg/util";
 
 // Configure localforage
-localforage.config({
-  driver: localforage.INDEXEDDB,
-  name: "solder",
-  version: 1,
-});
+if (typeof window !== "undefined") {
+  localforage.config({
+    driver: localforage.INDEXEDDB,
+    name: "solder",
+    version: 1,
+  });
+}
 
 const chunksStore = localforage.createInstance({
   name: "chunks",
