@@ -119,19 +119,19 @@ const Recorder = () => {
 
   const getBitrateSettings = (quality: string) => {
     const settings = {
-      "4k": { audio: 192000, video: 40000000 },
-      "1080p": { audio: 192000, video: 8000000 },
-      "720p": { audio: 128000, video: 5000000 },
-      "480p": { audio: 96000, video: 2500000 },
-      "360p": { audio: 96000, video: 1000000 },
-      "240p": { audio: 64000, video: 500000 },
+      "4k": { audio: 128000, video: 25000000 },
+      "1080p": { audio: 128000, video: 6000000 },
+      "720p": { audio: 96000, video: 3000000 },
+      "480p": { audio: 64000, video: 1500000 },
+      "360p": { audio: 64000, video: 800000 },
+      "240p": { audio: 48000, video: 400000 },
     };
     return settings[quality as keyof typeof settings] || settings["1080p"];
   };
 
   const getResolutionSettings = (quality: string) => {
     const settings = {
-      "4k": { width: 4096, height: 2160 },
+      "4k": { width: 3840, height: 2160 },
       "1080p": { width: 1920, height: 1080 },
       "720p": { width: 1280, height: 720 },
       "480p": { width: 854, height: 480 },
@@ -294,8 +294,8 @@ const Recorder = () => {
       };
 
       recorder.current = new MediaRecorder(liveStream.current, recorderOptions);
-      const chunkInterval =
-        settings.quality === "4k" || settings.quality === "1080p" ? 2000 : 1000;
+      // Use smaller chunk intervals to reduce lag
+      const chunkInterval = 500; // 500ms for all qualities
 
       recorder.current.start(chunkInterval);
       setRecording(true);
@@ -304,7 +304,6 @@ const Recorder = () => {
 
       // Handle data available
       recorder.current.ondataavailable = async (e: BlobEvent) => {
-        await checkMaxMemory(); // Check memory before saving chunk
         if (e.data.size > 0) {
           // If timecode is available, check for duplicates
           const timestamp =
@@ -321,22 +320,30 @@ const Recorder = () => {
 
           try {
             const startTime = performance.now();
-            await chunksStore.setItem(`chunk_${index.current}`, {
+            const chunkData = {
               index: index.current,
               chunk: e.data,
               timestamp,
-            });
+            };
+            chunksStore
+              .setItem(`chunk_${index.current}`, chunkData)
+              .catch(() => {
+                setRecording(false);
+                localStorage.setItem("recording", "false");
+              });
 
             index.current++;
             chunkIndex.current = index.current;
             hasChunks.current = true;
 
             const processingTime = performance.now() - startTime;
-            setPerformanceStats({
-              fps: parseInt(settings.fps),
-              chunkSize: e.data.size,
-              processingTime,
-            });
+            if (processingTime < 1000) {
+              setPerformanceStats({
+                fps: parseInt(settings.fps),
+                chunkSize: e.data.size,
+                processingTime,
+              });
+            }
           } catch (err) {
             console.error("Error saving chunk:", err);
             setRecording(false);
@@ -402,20 +409,6 @@ const Recorder = () => {
     setRecording(false);
     localStorage.setItem("recording", "false");
   }, []);
-
-  // Optional: Check available storage and stop recording if low
-  const checkMaxMemory = async () => {
-    try {
-      const data = await navigator.storage.estimate();
-      const minMemory = 26214400; // 25MB
-      if (data.quota && data.quota < minMemory) {
-        alert("Low storage space, stopping recording.");
-        stopRecording();
-      }
-    } catch (err) {
-      console.error("Memory check error:", err);
-    }
-  };
 
   const createMixedAudioStream = async (
     screenStream: MediaStream,
